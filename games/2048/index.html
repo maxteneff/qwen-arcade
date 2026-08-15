@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>2048 · Qwen Arcade</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%23111'/></svg>">
+  <style>
+    :root {
+      --bg: #fafafa;
+      --fg: #111111;
+      --muted: #777777;
+      --line: #e5e5e5;
+    }
+
+    * { box-sizing: border-box; margin: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    header {
+      width: 100%;
+      max-width: 440px;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding: 24px 16px 0;
+    }
+
+    header a {
+      color: var(--muted);
+      font-size: 14px;
+      text-decoration: none;
+    }
+
+    header a:hover { color: var(--fg); }
+
+    h1 { font-size: 20px; font-weight: 600; }
+
+    main {
+      width: 100%;
+      max-width: 440px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .score {
+      width: min(400px, 100%);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .score b {
+      color: var(--fg);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .score .spacer { flex: 1; }
+
+    .score button {
+      font: inherit;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 5px 12px;
+      cursor: pointer;
+      color: var(--fg);
+    }
+
+    .score button:hover { border-color: #c9c9c9; }
+
+    .board {
+      position: relative;
+      width: min(400px, 100%);
+      aspect-ratio: 1;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+
+    .cells {
+      position: absolute;
+      inset: 10px;
+      display: grid;
+      grid-template: repeat(4, 1fr) / repeat(4, 1fr);
+      gap: 10px;
+    }
+
+    .cell {
+      background: #f1f1f1;
+      border-radius: 6px;
+    }
+
+    .tiles { position: absolute; inset: 0; }
+
+    .tile {
+      position: absolute;
+      width: calc(25% - 12.5px);
+      height: calc(25% - 12.5px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      border-radius: 6px;
+      user-select: none;
+      transition: left 0.12s ease, top 0.12s ease;
+    }
+
+    .tile.spawn { animation: pop 0.18s ease; }
+    .tile.pop { animation: pop 0.2s ease; }
+
+    @keyframes pop {
+      0% { transform: scale(0.5); }
+      60% { transform: scale(1.1); }
+      100% { transform: scale(1); }
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      background: rgba(250, 250, 250, 0.85);
+      border-radius: 10px;
+      text-align: center;
+      padding: 16px;
+    }
+
+    .overlay.hidden { display: none; }
+
+    .overlay .title { font-size: 18px; font-weight: 600; }
+    .overlay .sub { font-size: 13px; color: var(--muted); }
+
+    .hint {
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="../../">&larr; All games</a>
+    <h1>2048</h1>
+  </header>
+
+  <main>
+    <div class="score">
+      <span>Score <b id="score">0</b></span>
+      <span>Best <b id="best">0</b></span>
+      <span class="spacer"></span>
+      <button id="new-game">New game</button>
+    </div>
+
+    <div class="board" id="board">
+      <div class="cells" id="cells"></div>
+      <div class="tiles" id="tiles"></div>
+      <div class="overlay hidden" id="overlay">
+        <div class="title" id="ov-title"></div>
+        <div class="sub" id="ov-sub"></div>
+      </div>
+    </div>
+
+    <p class="hint">Arrows / WASD to slide &middot; R to restart &middot; Swipe on touch</p>
+  </main>
+
+  <script>
+    "use strict";
+
+    const N = 4;
+    const tileLayer = document.getElementById("tiles");
+    const scoreEl = document.getElementById("score");
+    const bestEl = document.getElementById("best");
+    const overlay = document.getElementById("overlay");
+    const ovTitle = document.getElementById("ov-title");
+    const ovSub = document.getElementById("ov-sub");
+
+    const cellsEl = document.getElementById("cells");
+    for (let i = 0; i < N * N; i++) {
+      const c = document.createElement("div");
+      c.className = "cell";
+      cellsEl.appendChild(c);
+    }
+
+    const PALETTE = {
+      2: ["#f1f1f1", "#444"],
+      4: ["#e9e9e9", "#333"],
+      8: ["#d6d6d6", "#111"],
+      16: ["#c4c4c4", "#111"],
+      32: ["#b2b2b2", "#fff"],
+      64: ["#9e9e9e", "#fff"],
+      128: ["#868686", "#fff"],
+      256: ["#6e6e6e", "#fff"],
+      512: ["#575757", "#fff"],
+      1024: ["#404040", "#fff"],
+      2048: ["#ef4444", "#fff"],
+    };
+
+    let tiles, nextId, score, won, winPending, over;
+    let best = Number(localStorage.getItem("qwen-arcade-2048-best") || 0);
+    bestEl.textContent = best;
+    const els = new Map();
+
+    function freeCells() {
+      const taken = new Set(tiles.map((t) => t.x + "," + t.y));
+      const free = [];
+      for (let x = 0; x < N; x++)
+        for (let y = 0; y < N; y++)
+          if (!taken.has(x + "," + y)) free.push({ x, y });
+      return free;
+    }
+
+    function addTile() {
+      const free = freeCells();
+      if (!free.length) return;
+      const p = free[Math.floor(Math.random() * free.length)];
+      tiles.push({ id: nextId++, x: p.x, y: p.y, value: Math.random() < 0.9 ? 2 : 4 });
+    }
+
+    function planMove(dx, dy) {
+      const moveAxis = dx !== 0 ? "x" : "y";
+      const lineAxis = dx !== 0 ? "y" : "x";
+      const high = dx > 0 || dy > 0;
+      let moved = false;
+      let gained = 0;
+      let made2048 = false;
+      const output = [];
+
+      for (let L = 0; L < N; L++) {
+        const line = tiles
+          .filter((t) => t[lineAxis] === L)
+          .sort((a, b) => (high ? b[moveAxis] - a[moveAxis] : a[moveAxis] - b[moveAxis]));
+        const orig = new Map(line.map((t) => [t.id, t[moveAxis]]));
+        const out = [];
+
+        for (const t of line) {
+          const prev = out[out.length - 1];
+          if (prev && prev.value === t.value && !prev.merged) {
+            prev.value *= 2;
+            prev.merged = true;
+            gained += prev.value;
+            if (prev.value === 2048) made2048 = true;
+            moved = true;
+          } else {
+            out.push({ id: t.id, value: t.value, merged: false, x: t.x, y: t.y });
+          }
+        }
+
+        out.forEach((t, i) => {
+          const target = high ? N - 1 - i : i;
+          if (target !== orig.get(t.id)) moved = true;
+          t[moveAxis] = target;
+        });
+
+        output.push(...out);
+      }
+
+      return { output, moved, gained, made2048 };
+    }
+
+    function canMoveAny() {
+      if (tiles.length < N * N) return true;
+      const grid = [];
+      for (let y = 0; y < N; y++) {
+        grid[y] = [];
+        for (let x = 0; x < N; x++)
+          grid[y][x] = tiles.find((t) => t.x === x && t.y === y).value;
+      }
+      for (let y = 0; y < N; y++)
+        for (let x = 0; x < N; x++) {
+          if (x + 1 < N && grid[y][x + 1] === grid[y][x]) return true;
+          if (y + 1 < N && grid[y + 1][x] === grid[y][x]) return true;
+        }
+      return false;
+    }
+
+    function syncScore() {
+      scoreEl.textContent = score;
+      if (score > best) {
+        best = score;
+        localStorage.setItem("qwen-arcade-2048-best", String(best));
+        bestEl.textContent = best;
+      }
+    }
+
+    function render() {
+      for (const [id, el] of els) {
+        if (!tiles.some((t) => t.id === id)) {
+          el.remove();
+          els.delete(id);
+        }
+      }
+      for (const t of tiles) {
+        let el = els.get(t.id);
+        if (!el) {
+          el = document.createElement("div");
+          el.className = "tile spawn";
+          tileLayer.appendChild(el);
+          els.set(t.id, el);
+        }
+        el.style.left = "calc(10px + " + t.x + " * (25% - 2.5px))";
+        el.style.top = "calc(10px + " + t.y + " * (25% - 2.5px))";
+        const pair = PALETTE[t.value] || ["#111", "#fff"];
+        el.style.background = pair[0];
+        el.style.color = pair[1];
+        el.style.fontSize = t.value < 100 ? "26px" : t.value < 1000 ? "21px" : "17px";
+        el.textContent = t.value;
+        if (t.merged) {
+          el.classList.remove("pop");
+          void el.offsetWidth;
+          el.classList.add("pop");
+        }
+      }
+    }
+
+    function showWin() {
+      winPending = true;
+      ovTitle.textContent = "2048!";
+      ovSub.textContent = "Impressive. Tap or press any key to keep playing.";
+      overlay.classList.remove("hidden");
+    }
+
+    function showGameOver() {
+      over = true;
+      ovTitle.textContent = "Game over";
+      ovSub.textContent = "Score " + score + " — tap to play again";
+      overlay.classList.remove("hidden");
+    }
+
+    function doMove(dx, dy) {
+      if (over || winPending) return;
+      const plan = planMove(dx, dy);
+      if (!plan.moved) return;
+      tiles = plan.output;
+      score += plan.gained;
+      syncScore();
+
+      addTile();
+      render();
+
+      if (!canMoveAny()) {
+        showGameOver();
+        return;
+      }
+      if (plan.made2048 && !won) {
+        won = true;
+        showWin();
+      }
+    }
+
+    function dismissWin() {
+      if (!winPending) return;
+      winPending = false;
+      overlay.classList.add("hidden");
+      if (!canMoveAny()) showGameOver();
+    }
+
+    function reset() {
+      tiles = [];
+      nextId = 1;
+      score = 0;
+      won = false;
+      winPending = false;
+      over = false;
+      els.clear();
+      tileLayer.innerHTML = "";
+      scoreEl.textContent = "0";
+      overlay.classList.add("hidden");
+      addTile();
+      addTile();
+      render();
+    }
+
+    const DIRS = {
+      ArrowUp: { dx: 0, dy: -1 }, KeyW: { dx: 0, dy: -1 },
+      ArrowDown: { dx: 0, dy: 1 }, KeyS: { dx: 0, dy: 1 },
+      ArrowLeft: { dx: -1, dy: 0 }, KeyA: { dx: -1, dy: 0 },
+      ArrowRight: { dx: 1, dy: 0 }, KeyD: { dx: 1, dy: 0 },
+    };
+
+    window.addEventListener("keydown", (e) => {
+      if (e.code === "KeyR") {
+        e.preventDefault();
+        reset();
+        return;
+      }
+      const d = DIRS[e.code];
+      if (!d) return;
+      e.preventDefault();
+      if (winPending) {
+        dismissWin();
+        return;
+      }
+      doMove(d.dx, d.dy);
+    });
+
+    overlay.addEventListener("click", () => {
+      if (over) reset();
+      else dismissWin();
+    });
+
+    document.getElementById("new-game").addEventListener("click", reset);
+
+    let touchStart = null;
+    window.addEventListener("touchstart", (e) => {
+      touchStart = e.touches[0];
+    }, { passive: true });
+
+    window.addEventListener("touchend", (e) => {
+      if (!touchStart) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - touchStart.clientX;
+      const dy = t.clientY - touchStart.clientY;
+      touchStart = null;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 30) {
+        if (over) reset();
+        else dismissWin();
+        return;
+      }
+      const d = Math.abs(dx) > Math.abs(dy)
+        ? { dx: Math.sign(dx), dy: 0 }
+        : { dx: 0, dy: Math.sign(dy) };
+      if (winPending) {
+        dismissWin();
+        return;
+      }
+      doMove(d.dx, d.dy);
+    });
+
+    reset();
+  </script>
+</body>
+</html>

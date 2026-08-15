@@ -4,6 +4,16 @@ const GAMES = [
     name: "Snake",
     blurb: "Eat the food, grow long, don't hit yourself. The classic, rebuilt from scratch.",
   },
+  {
+    slug: "2048",
+    name: "2048",
+    blurb: "Slide tiles, merge numbers, chase the 2048 tile. The classic grid puzzle.",
+  },
+  {
+    slug: "tetris",
+    name: "Tetris",
+    blurb: "Stack falling pieces, clear lines, beat your best score. The arcade staple.",
+  },
 ];
 
 const grid = document.getElementById("games");
