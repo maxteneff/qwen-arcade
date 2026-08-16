@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ctrl+F: Archive Hunter · Qwen Arcade</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%23111'/></svg>">
+  <style>
+    :root {
+      --page: #eceae4;
+      --fg: #151515;
+      --muted: #6d6a63;
+      --line: #d4d1c8;
+      --chrome: #d8d5cc;
+      --chrome-hi: #f2f0ea;
+      --titlebar: #2c3e57;
+      --accent: #274b77;
+      --warn: #a3541e;
+      --err: #9c2b2b;
+      --ok: #2c6e3f;
+    }
+
+    * { box-sizing: border-box; margin: 0; }
+
+    body {
+      background: var(--page);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    header {
+      width: 100%;
+      max-width: 920px;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding: 24px 16px 0;
+    }
+
+    header a { color: var(--muted); font-size: 14px; text-decoration: none; }
+    header a:hover { color: var(--fg); }
+    h1 { font-size: 20px; font-weight: 600; }
+
+    main {
+      width: 100%;
+      max-width: 920px;
+      padding: 14px 16px 32px;
+    }
+
+    .casebar {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      padding: 0 2px 8px;
+      user-select: none;
+    }
+
+    .casebar b { color: var(--fg); font-weight: 600; }
+
+    .window {
+      background: var(--chrome);
+      border: 1px solid #8f8c84;
+      box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.14), 0 12px 32px rgba(0, 0, 0, 0.12);
+      position: relative;
+    }
+
+    .titlebar {
+      background: var(--titlebar);
+      color: #eef1f6;
+      font-size: 12px;
+      letter-spacing: 0.03em;
+      padding: 5px 10px;
+      display: flex;
+      justify-content: space-between;
+      user-select: none;
+    }
+
+    .titlebar .btns { opacity: 0.75; letter-spacing: 2px; }
+
+    .menubar {
+      font-size: 12px;
+      padding: 3px 10px;
+      border-bottom: 1px solid #b3b0a7;
+      color: #4d4b45;
+      user-select: none;
+    }
+
+    .menubar span { margin-right: 16px; cursor: default; }
+    .menubar span:first-letter { font-weight: 600; }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-bottom: 1px solid #b3b0a7;
+      background: var(--chrome-hi);
+    }
+
+    .toolbar label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: #57544d;
+    }
+
+    .toolbar input {
+      flex: 1;
+      font: 13px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      padding: 5px 8px;
+      border: 1px solid #9b988f;
+      background: #fff;
+      color: var(--fg);
+      outline: none;
+    }
+
+    .toolbar input:focus { border-color: var(--accent); }
+
+    .toolbar button {
+      font: 12px system-ui, sans-serif;
+      font-weight: 600;
+      padding: 5px 14px;
+      background: var(--accent);
+      color: #fff;
+      border: 1px solid #1d3a5e;
+      cursor: pointer;
+    }
+
+    .toolbar button:active { transform: translateY(1px); }
+
+    .body {
+      display: flex;
+      align-items: stretch;
+      background: #fff;
+      border-top: 1px solid var(--chrome);
+    }
+
+    #list {
+      list-style: none;
+      padding: 8px 0;
+      width: 250px;
+      flex-shrink: 0;
+      border-right: 1px solid #c9c6bd;
+      background: #fbfaf7;
+      overflow-y: auto;
+      max-height: 460px;
+      user-select: none;
+    }
+
+    #list li {
+      padding: 6px 12px;
+      font: 12.5px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    #list li .dim { color: #a29f97; font-size: 11px; white-space: nowrap; }
+
+    #list li:hover { background: #f1efe8; }
+
+    #list li.active { background: var(--titlebar); color: #eef1f6; }
+    #list li.active .dim { color: #b9c2d2; }
+
+    #list li.flag::after {
+      content: "!";
+      color: var(--warn);
+      font-weight: 700;
+      margin-left: 6px;
+    }
+
+    #list li.flag.active::after { color: #ffd28a; }
+
+    #view {
+      flex: 1;
+      padding: 14px 18px;
+      font: 13px/1.65 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-y: auto;
+      max-height: 460px;
+    }
+
+    #view .empty { color: #a29f97; }
+
+    mark {
+      background: #ffd35a;
+      color: #211d12;
+      padding: 0 2px;
+      border-radius: 2px;
+    }
+
+    .statusbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 5px 10px;
+      font-size: 12px;
+      border-top: 1px solid #b3b0a7;
+      background: var(--chrome-hi);
+      user-select: none;
+    }
+
+    #msg { color: #55524b; }
+    #msg.ok { color: var(--ok); font-weight: 600; }
+    #msg.err { color: var(--err); font-weight: 600; }
+
+    #stat { color: #8b887f; white-space: nowrap; }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      background: rgba(236, 234, 228, 0.92);
+      text-align: center;
+      padding: 24px;
+    }
+
+    .overlay.hidden { display: none; }
+    .overlay .big { font-size: 22px; font-weight: 700; letter-spacing: 0.02em; }
+    .overlay .sub { font-size: 13px; color: var(--muted); max-width: 420px; }
+    .overlay .stats {
+      font: 12px ui-monospace, monospace;
+      color: #55524b;
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 10px 16px;
+    }
+    .overlay button {
+      font: 13px system-ui, sans-serif;
+      font-weight: 600;
+      padding: 8px 22px;
+      background: var(--accent);
+      color: #fff;
+      border: 1px solid #1d3a5e;
+      cursor: pointer;
+    }
+
+    .hint { font-size: 12px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+    @media (max-width: 700px) {
+      .body { flex-direction: column; }
+      #list { width: 100%; max-height: 180px; border-right: none; border-bottom: 1px solid #c9c6bd; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="../../">&larr; All games</a>
+    <h1>Ctrl+F: Archive Hunter</h1>
+  </header>
+
+  <main>
+    <div class="casebar">
+      <span>HALCYON DYNAMICS &middot; CASE <b>#4471</b> &middot; PROJECT <b>AURORA</b></span>
+      <span>MIS: FIND AND EXFILTRATE THE MASTER BLUEPRINT</span>
+    </div>
+
+    <div class="window">
+      <div class="titlebar">
+        <span>ARCHIVE SHELL 3.1 &mdash; C:\HALCYON\ARCHIVE</span>
+        <span class="btns">_ &square; &#10005;</span>
+      </div>
+      <div class="menubar"><span>File</span><span>Edit</span><span>View</span><span>Help</span></div>
+
+      <div class="toolbar">
+        <label for="q">INDEX&nbsp;SEARCH</label>
+        <input id="q" type="text" placeholder="keyword: name, code, IP, phrase &hellip;" autocomplete="off" spellcheck="false">
+        <button id="go">SEARCH</button>
+      </div>
+
+      <div class="body">
+        <ul id="list"></ul>
+        <div id="view"><span class="empty">Select a file on the left to open it.</span></div>
+      </div>
+
+      <div class="statusbar">
+        <span id="msg">TERMINAL READY. Press F to search the index.</span>
+        <span id="stat"></span>
+      </div>
+
+      <div class="overlay hidden" id="overlay">
+        <div class="big" id="ov-title"></div>
+        <div class="sub" id="ov-sub"></div>
+        <div class="stats" id="ov-stats"></div>
+        <button id="ov-btn">RUN IT BACK</button>
+      </div>
+    </div>
+
+    <p class="hint">F or / focuses search &middot; Enter runs it &middot; Keywords are case-insensitive &middot; Damaged files (&ldquo;!&rdquo;) need the right keyword typed elsewhere</p>
+  </main>
+
+  <script>
+    "use strict";
+
+    const FILES = [
+      {
+        id: "readme", name: "readme.txt", size: "2.1 KB", date: "03/11", visible: true,
+        lines: [
+          "HALCYON DYNAMICS — INTERNAL INTRANET", "",
+          "HOW TO USE THIS TERMINAL",
+          "1. Click a file in the tree to open it.",
+          "2. Press F and type a keyword to query the index.",
+          "   Names, codenames, IPs and phrases all open new",
+          "   branches. What you type is never logged —",
+          "   supposedly.",
+          "3. Damaged files show as garbled. Find the key",
+          "   word elsewhere and type it to restore the record.", "",
+          "CASE BOARD: Project AURORA. The master blueprint",
+          "is gone. Find it. Exfiltrate it. Leave no trail.",
+        ],
+      },
+      {
+        id: "meeting", name: "meeting_0312.log", size: "4.8 KB", date: "03/12", visible: true,
+        lines: [
+          "2003-03-12 14:02  BOARDROOM LOG",
+          "CROSS: Q1 margins are fine. The board should sleep.",
+          "REIS: And the AURORA partition?",
+          "CROSS: AURORA stays partitioned. No one quotes it",
+          "       in the minutes. I want zero paper.",
+          "REIS: The board asks who signs for vault access.",
+          "CROSS: I do. Ask no further.", "",
+          "[LOG ENCRYPTED BY f.cross AFTER 14:19]",
+        ],
+      },
+      {
+        id: "hr", name: "hr_notice.txt", size: "1.3 KB", date: "03/14", visible: true,
+        lines: [
+          "HUMAN RESOURCES — NOTICE 4471", "",
+          "M. REYES, Archives Division, is reminded that badge",
+          "#4471 entitles access to shelves A1 - C9 only.", "",
+          "Separately: Mr. Reyes was photographed in the server",
+          "room at 02:10 on the 12th. He says he searched for a",
+          "lost terminal. We have filed the image.",
+        ],
+      },
+      {
+        id: "server", name: "server_access.log", size: "9.6 KB", date: "03/12", visible: true,
+        lines: [
+          "03/12 01:58  10.14.7.12  f.reyes   AUTH OK   shelf-catalog",
+          "03/12 02:04  10.14.7.12  f.reyes   AUTH OK   shelf-catalog",
+          "03/12 02:14  10.14.7.33  f.cross   AUTH OK   AURORA-PART",
+          "03/12 02:15  10.14.7.33  f.cross   WRITE   aurora7_blueprint.drg",
+          "03/12 02:17  10.14.7.33  f.cross   WIPE    local-cache",
+          "03/12 02:17  10.14.7.33  f.cross   AUTH OFF", "",
+          "NOTE: 10.14.7.33 is the cold-storage vault host.",
+        ],
+      },
+      {
+        id: "payroll", name: "payroll_q2.pdf", size: "12.4 KB", date: "03/18", visible: true,
+        corrupted: true, repairKey: "REYES",
+        damaged: [
+          "HALCYON DYNAMICS — Q2 PAYROLL & TRANSFERS", "",
+          "M. REYES ........... ▓▓▓▓▓▓▓▓▓▓▓ ▓▓▓▓▓▓▓▓ ▓▓▓▓▓▓▓▓▓▓▓",
+          "   MEMO (REYES): copied the ▓▓▓▓▓▓▓▓▓▓▓ keyphrase onto",
+          "   a ▓▓▓▓▓▓▓▓▓▓▓ label. Label ID: V-77-██████. Do not",
+          "   ▓▓▓▓▓▓▓▓▓▓▓▓ it in writing again. --R",
+        ],
+        plain: [
+          "HALCYON DYNAMICS — Q2 PAYROLL & TRANSFERS", "",
+          "M. REYES ........... TRANSFERRED .... ARCHIVES DIV",
+          "   MEMO (REYES): copied the AURORA keyphrase onto",
+          "   a VAULT-7 label. Label ID: V-77-0447. Do not",
+          "   repeat it in writing again. --R",
+        ],
+      },
+      {
+        id: "dossier", name: "dossier_cross.txt", size: "7.7 KB", date: "—", visible: false, unlockKey: "AURORA",
+        lines: [
+          "INTELLIGENCE DOSSIER — F. CROSS", "",
+          "Codename on the board's private channel: FALCON.", "",
+          "The AURORA-7 master blueprint was moved off the",
+          "intranet on the 12th. Last confirmed location: cold",
+          "storage, host 10.14.7.33, label VAULT-7.", "",
+          "The keyphrase for the vault was written into the Q2",
+          "payroll memo by the one clerk who had access: Reyes.", "",
+          "Cross keeps a private notebook. It never left his desk.",
+        ],
+      },
+      {
+        id: "vault", name: "vault_backup.tar", size: "220 MB", date: "—", visible: false, unlockKey: "10.14.7.33",
+        lines: [
+          "ARCHIVE MANIFEST — VAULT-7 (backup copy, 03/12 02:15)", "",
+          "  cross_notes_88.txt      CHECKSUM OK",
+          "  shelf_photos_4471.rar   CHECKSUM OK",
+          "  aurora7_blueprint.drg   WITHHELD — phrase required", "",
+          "WITHHELD items open in the shell when the correct",
+          "phrase is typed into the index search.",
+        ],
+      },
+      {
+        id: "notes", name: "cross_notes_88.txt", size: "1.9 KB", date: "—", visible: false, unlockKey: "FALCON",
+        lines: [
+          "PRIVATE NOTEBOOK — PAGE 88", "",
+          "If they find the vault copy, they will trace the label.",
+          "The phrase lives only in Reyes's payroll memo — paper",
+          "and a dead server. I burned the master drive at 02:17.",
+          "Reyes's server-room photo is in HR file 4471. Let the",
+          "archive hunt the archive.", "",
+          "— F.",
+        ],
+      },
+      {
+        id: "blueprint", name: "aurora7_blueprint.drg", size: "48.2 MB", date: "—",
+        visible: false, unlockKey: "V-77-0447", win: true,
+        lines: [
+          "AURORA-7 — MASTER UPLINK BLUEPRINT (EXFILTRATED COPY)", "",
+          "  [VECTOR LATTICE ...... 7/7 SEGMENTS RENDERED]",
+          "  [PHASED ARRAY ......... SPEC NOMINAL]",
+          "  [LAUNCH WINDOW ........ 14 DAYS]", "",
+          "CASE CLOSED. The blueprint is yours.",
+        ],
+      },
+    ];
+
+    let current, attempts, openedSet, query, started, won, endedAt;
+
+    const listEl = document.getElementById("list");
+    const viewEl = document.getElementById("view");
+    const msgEl = document.getElementById("msg");
+    const statEl = document.getElementById("stat");
+    const qEl = document.getElementById("q");
+    const overlay = document.getElementById("overlay");
+    const ovTitle = document.getElementById("ov-title");
+    const ovSub = document.getElementById("ov-sub");
+    const ovStats = document.getElementById("ov-stats");
+
+    function reset() {
+      FILES.forEach((f) => {
+        f.visible = !f.unlockKey;
+        if (f.corrupted) { f.repaired = false; f.lines = f.damaged; }
+      });
+      current = null;
+      attempts = 0;
+      openedSet = new Set();
+      query = "";
+      started = Date.now();
+      won = false;
+      overlay.classList.add("hidden");
+      msgEl.className = "";
+      msgEl.textContent = "TERMINAL READY. Press F to search the index.";
+      renderList();
+      viewEl.innerHTML = '<span class="empty">Select a file on the left to open it.</span>';
+      renderStat();
+    }
+
+    function renderList() {
+      listEl.innerHTML = "";
+      FILES.forEach((f) => {
+        if (!f.visible) return;
+        const li = document.createElement("li");
+        if (f.id === current) li.className = "active";
+        if (f.corrupted && !f.repaired) li.className += " flag";
+        const name = document.createElement("span");
+        name.textContent = f.name;
+        const dim = document.createElement("span");
+        dim.className = "dim";
+        dim.textContent = f.size;
+        li.append(name, dim);
+        li.addEventListener("click", () => openFile(f));
+        listEl.appendChild(li);
+      });
+    }
+
+    function esc(s) {
+      return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function openFile(f) {
+      current = f.id;
+      if (!openedSet.has(f.id)) openedSet.add(f.id);
+      const text = f.lines.map(esc).join("\n");
+      let html;
+      if (query) {
+        const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+        html = text.replace(re, (m) => "<mark>" + m + "</mark>");
+      } else {
+        html = text;
+      }
+      viewEl.innerHTML = html;
+      renderList();
+      renderStat();
+    }
+
+    function renderStat() {
+      const visible = FILES.filter((f) => f.visible).length;
+      const now = won ? endedAt : Date.now();
+      const secs = Math.max(0, Math.round((now - started) / 1000));
+      const mm = String(Math.floor(secs / 60)).padStart(2, "0");
+      const ss = String(secs % 60).padStart(2, "0");
+      statEl.textContent = visible + "/" + FILES.length + " FILES · " + openedSet.size + " OPENED · " + attempts + " QUERIES · " + mm + ":" + ss;
+    }
+
+    function setMsg(text, cls) {
+      msgEl.className = cls || "";
+      msgEl.textContent = text;
+    }
+
+    function search(raw) {
+      const q = String(raw).trim();
+      if (!q) {
+        setMsg("Empty query. Type a keyword first.", "err");
+        return;
+      }
+      attempts += 1;
+      query = q.toLowerCase();
+      const acts = [];
+
+      FILES.forEach((f) => {
+        if (f.corrupted && !f.repaired && f.repairKey.toLowerCase() === query) {
+          f.repaired = true;
+          f.lines = f.plain;
+          acts.push("REPAIRED " + f.name);
+        }
+      });
+
+      FILES.forEach((f) => {
+        if (!f.visible && f.unlockKey && f.unlockKey.toLowerCase() === query) {
+          f.visible = true;
+          acts.push("BRANCH OPENED: " + f.name);
+          if (f.win) {
+            win();
+            return;
+          }
+        }
+      });
+
+      let hits = 0;
+      FILES.forEach((f) => {
+        if (!f.visible) return;
+        f.lines.forEach((ln) => { if (ln.toLowerCase().includes(query)) hits += 1; });
+      });
+
+      if (current) {
+        const cf = FILES.find((f) => f.id === current);
+        const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+        viewEl.innerHTML = cf.lines.map(esc).join("\n").replace(re, (m) => "<mark>" + m + "</mark>");
+      }
+
+      if (acts.length) {
+        setMsg(acts.join("  ·  "), "ok");
+      } else if (hits) {
+        setMsg(hits + " occurrence(s) in the open branch — keep digging.", "ok");
+      } else {
+        setMsg("No index entry for \u201C" + q + "\u201D. (query " + attempts + ")", "err");
+      }
+
+      renderList();
+      renderStat();
+    }
+
+    function win() {
+      won = true;
+      endedAt = Date.now();
+      const secs = Math.max(1, Math.round((Date.now() - started) / 1000));
+      ovTitle.textContent = "CASE CLOSED — AURORA-7 EXFILTRATED";
+      ovSub.textContent = "Cross burns his notebooks at dawn. Reyes files the image in a drawer. The blueprint sits on a dead USB stick in your coat.";
+      ovStats.textContent = "QUERIES " + attempts + "  ·  FILES OPENED " + openedSet.size + "  ·  TIME " + Math.floor(secs / 60) + ":" + String(secs % 60).padStart(2, "0");
+      overlay.classList.remove("hidden");
+      renderStat();
+    }
+
+    qEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") search(qEl.value);
+    });
+    document.getElementById("go").addEventListener("click", () => {
+      search(qEl.value);
+      qEl.focus();
+    });
+    overlay.querySelector("#ov-btn").addEventListener("click", reset);
+
+    window.addEventListener("keydown", (e) => {
+      if (e.target === qEl) return;
+      if (e.code === "KeyF" || e.key === "/") {
+        e.preventDefault();
+        qEl.focus();
+      }
+    });
+
+    reset();
+  </script>
+</body>
+</html>
